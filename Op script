@@ -2,6 +2,6 @@ local player = game.Players.LocalPlayer
 local hum = player.Character.HumanoidRootPart
 local slaps = player.leaderstats.Slaps
 while true do
-slaps.Value = slaps.Value +1000
+slaps.Value = slaps.Value +1
 task.wait()
 end
