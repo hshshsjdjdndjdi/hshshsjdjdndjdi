@@ -1,0 +1,150 @@
+local model = script.Parent
+local part = model:FindFirstChildWhichIsA("BasePart", true)
+local soundTemplate = model:FindFirstChild("Lego", true)
+
+if not part then return end
+
+local function createRagdoll(char)
+	for _, motor in ipairs(char:GetDescendants()) do
+		if motor:IsA("Motor6D") and motor.Name ~= "Neck" then
+			local a0 = Instance.new("Attachment", motor.Part0)
+			local a1 = Instance.new("Attachment", motor.Part1)
+			a0.Name = "RagdollA0"
+			a1.Name = "RagdollA1"
+			a0.CFrame = motor.C0
+			a1.CFrame = motor.C1
+
+			local socket = Instance.new("BallSocketConstraint")
+			socket.Name = "RagdollSocket"
+			socket.Attachment0 = a0
+			socket.Attachment1 = a1
+			socket.LimitsEnabled = true
+			socket.TwistLimitsEnabled = true
+			socket.UpperAngle = 30
+			socket.TwistLowerAngle = -15
+			socket.TwistUpperAngle = 15
+			socket.Parent = motor.Part0
+
+			motor.Enabled = false
+		end
+	end
+end
+
+local function removeRagdoll(char)
+	for _, obj in ipairs(char:GetDescendants()) do
+		if obj:IsA("BallSocketConstraint") and obj.Name == "RagdollSocket" then
+			obj:Destroy()
+		elseif obj:IsA("Attachment") and (obj.Name == "RagdollA0" or obj.Name == "RagdollA1") then
+			obj:Destroy()
+		elseif obj:IsA("Motor6D") then
+			obj.Enabled = true
+		end
+	end
+end
+
+local function setRagdollState(char, isRagdoll)
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	for _, part in ipairs(char:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			part.CanCollide = isRagdoll
+		end
+	end
+
+	humanoid.PlatformStand = isRagdoll
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	local ragdollTrack = nil
+
+	if isRagdoll then
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+		createRagdoll(char)
+
+		local anim = Instance.new("Animation")
+		anim.AnimationId = "rbxassetid://14530778368"
+		if animator then
+			ragdollTrack = animator:LoadAnimation(anim)
+			ragdollTrack:Play()
+		end
+	else
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
+		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		humanoid.WalkSpeed = 16
+		humanoid.JumpPower = 50
+		removeRagdoll(char)
+	end
+
+	local animate = char:FindFirstChild("Animate")
+	if animate then
+		animate.Disabled = isRagdoll
+	end
+
+	local tool = char:FindFirstChildOfClass("Tool")
+	if tool then
+		tool.Enabled = not isRagdoll
+	end
+
+	return ragdollTrack
+end
+
+part.Touched:Connect(function(hit)
+	local char = hit:FindFirstAncestorWhichIsA("Model")
+	if not char then return end
+	if not char:IsDescendantOf(workspace:FindFirstChild("ActiveEnemies")) then return end
+
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
+
+	local ragdollPermission = char:FindFirstChild("Ragdoll:Brick")
+	if not ragdollPermission then
+		ragdollPermission = Instance.new("BoolValue")
+		ragdollPermission.Name = "Ragdoll:Brick"
+		ragdollPermission.Value = true
+		ragdollPermission.Parent = char
+	end
+
+	if not ragdollPermission.Value then return end
+	ragdollPermission.Value = false
+
+	-- เปิด permission กลับมา + บังคับเปิด Animate
+	task.delay(4.7, function()
+		if ragdollPermission then
+			ragdollPermission.Value = true
+		end
+
+		local animate = char:FindFirstChild("Animate")
+		if animate then
+			animate.Disabled = false
+		end
+	end)
+
+	local oldHealth = humanoid.Health
+
+	local flag = Instance.new("BoolValue")
+	flag.Name = "AlreadyRagdolled"
+	flag.Parent = char
+	game:GetService("Debris"):AddItem(flag, 5)
+
+	local track = setRagdollState(char, true)
+
+	local sound
+	if soundTemplate then
+		sound = soundTemplate:Clone()
+		sound.Parent = workspace
+		sound:Play()
+		game:GetService("Debris"):AddItem(sound, 5)
+	end
+
+	task.delay(4.5, function()
+		if humanoid and humanoid.Parent then
+			humanoid.Health = math.max(humanoid.Health, oldHealth)
+			if sound and sound.IsPlaying then
+				sound:Stop()
+			end
+			if track then track:Stop() end
+			setRagdollState(char, false)
+		end
+	end)
+end)
